@@ -1,7 +1,7 @@
-import { connectDBTrabajadores } from '../db.js';
+import { connectDBClientes } from '../db.js';
 import mongoose from 'mongoose';
 
-const adminSchema = new mongoose.Schema({
+const clientesSchema = new mongoose.Schema({
     nombre:{
         type: String,
         required: true
@@ -11,7 +11,7 @@ const adminSchema = new mongoose.Schema({
         required: true,
         unique: true,
     },
-    puesto:{
+    telefono:{
         type: String,
         required: true
     },
@@ -19,21 +19,17 @@ const adminSchema = new mongoose.Schema({
         type: Boolean,
         required: true
     },
-    status:{
-        type: Boolean,
-        default: true
-    },
-    telefono:{
-        type: String,
-        required: true
-    },
     password:{
         type: String,
         required: true
     },
+    carros: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Carros'
+    }]
 },
 {
     timestamps: true
 });
 
-export default connectDBTrabajadores.model('Admin', adminSchema);
+export default connectDBClientes.model('Clientes', clientesSchema);

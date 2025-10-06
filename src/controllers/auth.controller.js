@@ -5,53 +5,48 @@ import jwt from "jsonwebtoken";
 import {createAccessToken} from "../libs/jwt.js";
 
 export const register = async (req, res) => {
-    const {nombre, correo, puesto, rol, telefono, password}= req.body;
+    const {nombre, correo, telefono, rol, password} = req.body;
     try {
-    
-    const passwordHash = await bcrypt.hash(password, 10);
-    const newAdmin = new Admin({
-        nombre,
-        correo,
-        puesto,
-        rol,
-        telefono,
-        password: passwordHash
-    });
+        const passwordHash = await bcrypt.hash(password, 10);
+        const newAdmin = new Admin({
+            nombre,
+            correo,
+            telefono,
+            rol,
+            password: passwordHash,
+            carros: [] // Inicializamos el array de carros vacío
+        });
 
-    console.log(newAdmin);
-
-    const AdminSaved = await newAdmin.save();
-    const token = await createAccessToken({id: AdminSaved._id,})
-    
-    res.cookie('token',token, {
-        samesite: 'none',
-        secure: true,
-    })
-    res.json({
-        message: 'Usuario creado correctamente',
-    })
-    // res.json(AdminSaved)
+        const AdminSaved = await newAdmin.save();
+        const token = await createAccessToken({id: AdminSaved._id})
+        
+        res.cookie('token', token, {
+            samesite: 'none',
+            secure: true,
+        })
+        res.json({
+            message: 'Usuario creado correctamente',
+        })
 
     } catch (error) {
         res.status(500).json({ message: error.message})
     }
 };
 export const subirUser = async (req, res) => {
-    const {nombre, correo, puesto, rol, telefono, password} = req.body;
+    const {nombre, correo, telefono, rol, password} = req.body;
     try {
-
         const passwordHash = await bcrypt.hash(password, 10);
         const newAdmin = new Admin({
-        nombre,
-        correo,
-        puesto,
-        rol,
-        telefono,
-        password: passwordHash
-    });
+            nombre,
+            correo,
+            telefono,
+            rol,
+            password: passwordHash,
+            carros: []
+        });
 
         const AdminSaved = await newAdmin.save();
-            res.json(AdminSaved);
+        res.json(AdminSaved);
 
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -126,28 +121,26 @@ export const logout = (req, res) => {
 }
 
 export const verifyToken = async (req, res) => {
-        const { token } = req.cookies;
+    const { token } = req.cookies;
 
-        if (!token) return res.status(401).json({message: 'No token provided'});
-    
-        jwt.verify(token, TOKEN_SECRET, async (err, admin) => {
+    if (!token) return res.status(401).json({message: 'No token provided'});
+
+    jwt.verify(token, TOKEN_SECRET, async (err, admin) => {
         if (err) return res.status(401).json({message: 'Token no válido'});
         
         const adminFound = await Admin.findById(admin.id);
         if (!adminFound) return res.status(404).json({message: 'Usuario no encontrado'});
-        console.log(adminFound);  
+        
         return res.json({
             id: adminFound._id,
             nombre: adminFound.nombre,
             correo: adminFound.correo,
-            puesto: adminFound.puesto,
-            p_responsable: adminFound.p_responsable,
-            telefono: adminFound.telefono
+            telefono: adminFound.telefono,
+            rol: adminFound.rol,
+            carros: adminFound.carros
         })
     });
-
 }
-
 
 export const perfil = async(req, res) => {
     const adminFound = await Admin.findById(req.admin.id)
@@ -158,42 +151,12 @@ export const perfil = async(req, res) => {
 }
 
 export const updatePerfil = async (req, res) => {
-    const {nombre, correo, puesto, p_responsable, telefono} = req.body;
+    const {nombre, correo, telefono} = req.body;
     const adminUpdated = await Admin.findByIdAndUpdate(req.admin.id, {
         nombre,
         correo,
-        puesto,
-        p_responsable,
         telefono
     }, {new: true});
     if (!adminUpdated) return res.status(404).json({message: 'Usuario no encontrado'});
     return res.json(adminUpdated);
 };
-
-export const subirCurso = async (req, res) => {
-    const {nombreCurso, tipo, fechaInicio, fechaFin, horario, duracionhoras, modalidad, instructor, objetivo, cupoMinimo, cupoMaximo, temario, costo, costoGeneral, participantes} = req.body;
-    try {
-        const newCurso = new Curso({
-            nombreCurso,
-            tipo,
-            fechaInicio,
-            fechaFin,
-            horario,
-            duracionhoras,
-            modalidad,
-            instructor,
-            objetivo,
-            cupoMinimo,
-            cupoMaximo,
-            temario,
-            costo,
-            costoGeneral,
-            participantes
-        });
-
-        const cursoSaved = await newCurso.save();
-        res.json(cursoSaved);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-}
