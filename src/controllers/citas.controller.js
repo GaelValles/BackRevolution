@@ -43,17 +43,20 @@ export const crearCita = async (req, res) => {
             costo,
             carro,
             cliente: req.admin.id,
-            gestor: req.admin.id,
             informacionAdicional
         });
 
         const citaGuardada = await nuevaCita.save();
 
-        // Poblar los datos necesarios para la respuesta
+        // Actualizar el array de citas del cliente
+        await Admin.findByIdAndUpdate(
+            req.admin.id,
+            { $push: { citas: citaGuardada._id } }
+        );
+
         const citaCompleta = await Citas.findById(citaGuardada._id)
             .populate('carro', 'marca modelo año color placas tipo')
-            .populate('cliente', 'nombre correo telefono')
-            .populate('gestor', 'nombre');
+            .populate('cliente', 'nombre correo telefono');
 
         res.json(citaCompleta);
     } catch (error) {
@@ -65,15 +68,35 @@ export const obtenerCitasPorCliente = async (req, res) => {
     try {
         const { id } = req.params;
         
-        const citas = await Citas.find({ cliente: id })
-            .populate('carro', 'marca modelo año color placas tipo')
-            .populate('cliente', 'nombre correo telefono')
-            .populate('gestor', 'nombre')
-            .sort({ fechaInicio: 1 })
-            .lean();
+        // Primero verificamos que el cliente existe
+        const cliente = await Admin.findById(id);
+        if (!cliente) {
+            return res.status(404).json({ message: "Cliente no encontrado" });
+        }
 
-        res.json(citas);
+        // Obtenemos las citas usando el array de citas del cliente
+        const citasCompletas = await Citas.find({
+            _id: { $in: cliente.citas }
+        })
+        .populate({
+            path: 'carro',
+            select: 'marca modelo año color placas tipo'
+        })
+        .populate({
+            path: 'cliente',
+            select: 'nombre correo telefono'
+        })
+        .select('fechaInicio fechaFin tipoServicio costo informacionAdicional estado createdAt updatedAt')
+        .lean();
+
+        // Agregamos console.log para debugging
+        console.log('Cliente encontrado:', cliente);
+        console.log('IDs de citas del cliente:', cliente.citas);
+        console.log('Citas completas encontradas:', citasCompletas);
+
+        res.json(citasCompletas);
     } catch (error) {
+        console.error('Error en obtenerCitasPorCliente:', error);
         res.status(500).json({ 
             message: "Error al obtener las citas", 
             error: error.message 
@@ -138,7 +161,15 @@ export const eliminarCita = async (req, res) => {
             return res.status(403).json({ message: "No autorizado" });
         }
 
+        // Eliminar la cita
         await Citas.findByIdAndDelete(id);
+
+        // Eliminar la referencia de la cita en el array del cliente
+        await Admin.findByIdAndUpdate(
+            req.admin.id,
+            { $pull: { citas: id } }
+        );
+
         res.json({ message: "Cita eliminada correctamente" });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -168,13 +199,13 @@ export const obtenerCita = async (req, res) => {
     try {
         const { id } = req.params;
         const cita = await Citas.findById(id).populate('carro');
-        
+        console.log("si llegó al backend",cita);
         if (!cita) return res.status(404).json({ message: "Cita no encontrada" });
         
         if (cita.carro.propietario.toString() !== req.admin.id) {
             return res.status(403).json({ message: "No autorizado" });
         }
-
+        console.log(cita);
         res.json(cita);
     } catch (error) {
         res.status(500).json({ message: error.message });

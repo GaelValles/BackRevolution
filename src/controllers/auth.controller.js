@@ -70,7 +70,7 @@ export const login = async (req, res) => {
     res.json({
         message: 'Usuario encontrado correctamente',
     })
-    // res.json(AdminSaved)
+
 
     } catch (error) {
         res.status(500).json({ message: error.message})
@@ -128,7 +128,10 @@ export const verifyToken = async (req, res) => {
     jwt.verify(token, TOKEN_SECRET, async (err, admin) => {
         if (err) return res.status(401).json({message: 'Token no válido'});
         
-        const adminFound = await Admin.findById(admin.id);
+        const adminFound = await Admin.findById(admin.id)
+            .populate('citas')
+            .populate('carros');
+
         if (!adminFound) return res.status(404).json({message: 'Usuario no encontrado'});
         
         return res.json({
@@ -137,8 +140,9 @@ export const verifyToken = async (req, res) => {
             correo: adminFound.correo,
             telefono: adminFound.telefono,
             rol: adminFound.rol,
-            carros: adminFound.carros
-        })
+            carros: adminFound.carros,
+            citas: adminFound.citas
+        });
     });
 }
 

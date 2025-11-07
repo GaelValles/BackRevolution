@@ -36,11 +36,6 @@ const citasSchema = new mongoose.Schema({
         ref: 'Clientes',
         required: true
     },
-    gestor: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Clientes',
-        required: true
-    },
     informacionAdicional: {
         type: String,
         default: ''

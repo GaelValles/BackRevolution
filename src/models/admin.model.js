@@ -26,6 +26,10 @@ const clientesSchema = new mongoose.Schema({
     carros: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Carros'
+    }],
+    citas: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Citas'
     }]
 },
 {
