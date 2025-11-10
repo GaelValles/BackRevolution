@@ -7,7 +7,9 @@ import {
     obtenerCitas,
     obtenerCita,
     obtenerCitasPorCliente,
-    obtenerCitasPorCarro
+    obtenerCitasPorCarro,
+    getAllCitas,           // Nueva ruta
+    updateCitaEstado      // Nueva ruta
 } from "../controllers/citas.controller.js";
 
 const router = Router();
@@ -19,5 +21,7 @@ router.get('/verCitas', authRequired, obtenerCitas);
 router.get('/verCita/:id', authRequired, obtenerCita);
 router.get('/porCliente/:id', authRequired, obtenerCitasPorCliente);
 router.get('/porCarro/:id', authRequired, obtenerCitasPorCarro);
+router.get('/getAllCitas', authRequired, getAllCitas);
+router.put('/updateEstado/:id', authRequired, updateCitaEstado);
 
 export default router;

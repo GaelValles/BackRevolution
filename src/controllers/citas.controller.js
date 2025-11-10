@@ -5,8 +5,7 @@ import Admin from "../models/admin.model.js";
 export const crearCita = async (req, res) => {
     try {
         const { 
-            fechaInicio, 
-            fechaFin, 
+            fechaInicio,
             tipoServicio, 
             costo, 
             carro, 
@@ -25,8 +24,7 @@ export const crearCita = async (req, res) => {
 
         // Verificar disponibilidad de horario
         const citaExistente = await Citas.findOne({
-            fechaInicio: { $lt: fechaFin },
-            fechaFin: { $gt: fechaInicio },
+            fechaInicio: { $lte: new Date(fechaInicio) },
             estado: { $nin: ['cancelada', 'completada'] }
         });
 
@@ -38,12 +36,12 @@ export const crearCita = async (req, res) => {
 
         const nuevaCita = new Citas({
             fechaInicio,
-            fechaFin,
             tipoServicio,
             costo,
             carro,
             cliente: req.admin.id,
-            informacionAdicional
+            informacionAdicional,
+            estado: 'programada'
         });
 
         const citaGuardada = await nuevaCita.save();
@@ -209,5 +207,86 @@ export const obtenerCita = async (req, res) => {
         res.json(cita);
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+};
+
+export const getAllCitas = async (req, res) => {
+    try {
+        const citas = await Citas.find()
+            .populate({
+                path: 'carro',
+                select: 'marca modelo año color placas tipo'
+            })
+            .populate({
+                path: 'cliente',
+                select: 'nombre correo telefono'
+            })
+            .select('fechaInicio fechaFin tipoServicio costo informacionAdicional estado createdAt updatedAt')
+            .sort({ fechaInicio: 1 })
+            .lean();
+
+        console.log('Todas las citas encontradas:', citas.length);
+        res.json(citas);
+    } catch (error) {
+        console.error('Error en getAllCitas:', error);
+        res.status(500).json({ 
+            message: "Error al obtener todas las citas", 
+            error: error.message 
+        });
+    }
+};
+
+export const updateCitaEstado = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { estado } = req.body;
+
+        // Validar que el estado sea válido
+        const estadosValidos = ['programada', 'en_proceso', 'completada', 'cancelada'];
+        if (!estadosValidos.includes(estado)) {
+            return res.status(400).json({ 
+                message: "Estado no válido" 
+            });
+        }
+
+        const updateData = { estado };
+
+        // Si el estado es 'completada', agregar fechaFin
+        if (estado === 'completada') {
+            updateData.fechaFin = new Date();
+        }
+
+        // Buscar y actualizar la cita
+        const citaActualizada = await Citas.findByIdAndUpdate(
+            id,
+            updateData,
+            { 
+                new: true,
+                runValidators: true
+            }
+        )
+        .populate({
+            path: 'carro',
+            select: 'marca modelo año color placas tipo'
+        })
+        .populate({
+            path: 'cliente',
+            select: 'nombre correo telefono'
+        });
+
+        if (!citaActualizada) {
+            return res.status(404).json({ 
+                message: "Cita no encontrada" 
+            });
+        }
+
+        console.log('Cita actualizada:', citaActualizada);
+        res.json(citaActualizada);
+    } catch (error) {
+        console.error('Error en updateCitaEstado:', error);
+        res.status(500).json({ 
+            message: "Error al actualizar el estado de la cita", 
+            error: error.message 
+        });
     }
 };

@@ -8,7 +8,8 @@ const citasSchema = new mongoose.Schema({
     },
     fechaFin: {
         type: Date,
-        required: true
+        required: false,
+        default: null
     },
     tipoServicio: {
         type: String,
