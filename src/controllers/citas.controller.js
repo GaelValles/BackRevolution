@@ -1,65 +1,95 @@
+import mongoose from 'mongoose';
 import Citas from "../models/citas.model.js";
 import Carros from "../models/carros.model.js";
 import Admin from "../models/admin.model.js";
 
+// Crear cita: valida entrada, parsea fecha de forma segura (acepta timestamp ms o string),
+// comprueba conflicto SOLO para el mismo carro en ventana ±15min y excluye estados terminales.
 export const crearCita = async (req, res) => {
-    try {
-        const { 
-            fechaInicio,
-            tipoServicio, 
-            costo, 
-            carro, 
-            informacionAdicional 
-        } = req.body;
+  try {
+    const {
+      fechaInicio,
+      tipoServicio,
+      costo,
+      carro,
+      informacionAdicional
+    } = req.body;
 
-        // Verificar que el carro existe y pertenece al usuario
-        const carroExiste = await Carros.findOne({ 
-            _id: carro, 
-            propietario: req.admin.id 
-        });
-        
-        if (!carroExiste) {
-            return res.status(404).json({ message: "Carro no encontrado" });
-        }
+    // Validaciones básicas
+    if (!carro) return res.status(400).json({ message: "Carro es requerido" });
+    if (!tipoServicio) return res.status(400).json({ message: "Tipo de servicio es requerido" });
+    if (costo == null) return res.status(400).json({ message: "Costo es requerido" });
 
-        // Verificar disponibilidad de horario
-        const citaExistente = await Citas.findOne({
-            fechaInicio: { $lte: new Date(fechaInicio) },
-            estado: { $nin: ['cancelada', 'completada'] }
-        });
-
-        if (citaExistente) {
-            return res.status(400).json({ 
-                message: "Ya existe una cita programada para ese horario" 
-            });
-        }
-
-        const nuevaCita = new Citas({
-            fechaInicio,
-            tipoServicio,
-            costo,
-            carro,
-            cliente: req.admin.id,
-            informacionAdicional,
-            estado: 'programada'
-        });
-
-        const citaGuardada = await nuevaCita.save();
-
-        // Actualizar el array de citas del cliente
-        await Admin.findByIdAndUpdate(
-            req.admin.id,
-            { $push: { citas: citaGuardada._id } }
-        );
-
-        const citaCompleta = await Citas.findById(citaGuardada._id)
-            .populate('carro', 'marca modelo año color placas tipo')
-            .populate('cliente', 'nombre correo telefono');
-
-        res.json(citaCompleta);
-    } catch (error) {
-        res.status(500).json({ message: error.message });
+    // Validar ObjectId del carro
+    if (!mongoose.Types.ObjectId.isValid(carro)) {
+      return res.status(400).json({ message: "ID de carro inválido" });
     }
+
+    // Parse seguro de fecha (acepta timestamp ms o string ISO)
+    let fechaObj;
+    if (typeof fechaInicio === 'number' || /^\d+$/.test(String(fechaInicio))) {
+      fechaObj = new Date(Number(fechaInicio));
+    } else {
+      fechaObj = new Date(String(fechaInicio));
+    }
+    if (!fechaObj || isNaN(fechaObj.getTime())) {
+      return res.status(400).json({ message: "Fecha inválida" });
+    }
+
+    // Owner id desde token (middleware debe setear req.admin)
+    const ownerId = req.admin?.id || req.admin?._id;
+    if (!ownerId) return res.status(401).json({ message: "No autorizado" });
+
+    // Verificar que el carro existe y pertenece al usuario
+    const carroExiste = await Carros.findOne({ _id: carro, propietario: ownerId });
+    if (!carroExiste) {
+      return res.status(404).json({ message: "Carro no encontrado" });
+    }
+
+    // Ventana de tolerancia (±15 minutos) para evitar solapamientos en el MISMO vehículo
+    const TOLERANCE_MS = 15 * 60 * 1000;
+    const windowStart = new Date(fechaObj.getTime() - TOLERANCE_MS);
+    const windowEnd = new Date(fechaObj.getTime() + TOLERANCE_MS);
+
+    // Buscar conflictos SOLO para el MISMO carro y sólo estados activos (no cancelada/completada)
+    const conflicto = await Citas.findOne({
+      carro: carro,
+      fechaInicio: { $gte: windowStart, $lte: windowEnd },
+      estado: { $nin: ['cancelada', 'completada'] }
+    });
+
+    if (conflicto) {
+      return res.status(400).json({
+        message: "Ya existe una cita programada para ese vehículo en un horario muy cercano",
+        conflictAt: conflicto.fechaInicio
+      });
+    }
+
+    // Crear y guardar cita (usamos fechaObj ya parseada)
+    const nuevaCita = new Citas({
+      fechaInicio: fechaObj,
+      tipoServicio,
+      costo,
+      carro,
+      cliente: ownerId,
+      informacionAdicional: informacionAdicional || '',
+      estado: 'programada'
+    });
+
+    const citaGuardada = await nuevaCita.save();
+
+    // Actualizar array de citas del cliente (si existe)
+    await Admin.findByIdAndUpdate(ownerId, { $push: { citas: citaGuardada._id } });
+
+    const citaCompleta = await Citas.findById(citaGuardada._id)
+      .populate('carro', 'marca modelo año color placas tipo')
+      .populate('cliente', 'nombre correo telefono');
+
+    return res.json(citaCompleta);
+  } catch (error) {
+    console.error('Error en crearCita:', error);
+    return res.status(500).json({ message: "Error al crear la cita", error: error.message });
+  }
 };
 
 export const obtenerCitasPorCliente = async (req, res) => {
@@ -105,19 +135,32 @@ export const obtenerCitasPorCliente = async (req, res) => {
 export const obtenerCitasPorCarro = async (req, res) => {
     try {
         const { id } = req.params;
-        
+
+        // Validar ObjectId
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "ID de carro inválido" });
+        }
+
+        // Verificar que el carro exista
+        const carro = await Carros.findById(id).lean();
+        if (!carro) {
+            return res.status(404).json({ message: "Carro no encontrado" });
+        }
+
+        // Obtener citas asociadas al carro
         const citas = await Citas.find({ carro: id })
             .populate('carro', 'marca modelo año color placas tipo')
             .populate('cliente', 'nombre correo telefono')
-            .populate('gestor', 'nombre')
+            .select('fechaInicio fechaFin tipoServicio costo informacionAdicional estado createdAt updatedAt')
             .sort({ fechaInicio: 1 })
             .lean();
 
-        res.json(citas);
+        return res.status(200).json(citas || []);
     } catch (error) {
-        res.status(500).json({ 
-            message: "Error al obtener las citas", 
-            error: error.message 
+        console.error('Error en obtenerCitasPorCarro:', error);
+        return res.status(500).json({
+            message: "Error al obtener las citas por carro",
+            error: error.message
         });
     }
 };
