@@ -8,8 +8,9 @@ import {
     obtenerCita,
     obtenerCitasPorCliente,
     obtenerCitasPorCarro,
-    getAllCitas,           // Nueva ruta
-    updateCitaEstado      // Nueva ruta
+    getAllCitas,
+    updateCitaEstado,
+    cancelarCita // nuevo
 } from "../controllers/citas.controller.js";
 
 const router = Router();
@@ -21,6 +22,11 @@ router.get('/verCitas', authRequired, obtenerCitas);
 router.get('/verCita/:id', authRequired, obtenerCita);
 router.get('/porCliente/:id', authRequired, obtenerCitasPorCliente);
 router.get('/porCarro/:id', authRequired, obtenerCitasPorCarro);
+
+// Nuevo endpoint para cancelar y aplicar penalidad
+router.post('/:id/cancel', authRequired, cancelarCita);
+
+// rutas administrativas / públicas
 router.get('/getAllCitas', authRequired, getAllCitas);
 router.put('/updateEstado/:id', authRequired, updateCitaEstado);
 

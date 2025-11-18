@@ -30,7 +30,12 @@ const clientesSchema = new mongoose.Schema({
     citas: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Citas'
-    }]
+    }],
+    // Nuevo campo: penalización por cancelación
+    penaltyUntil: {
+        type: Date,
+        default: null
+    }
 },
 {
     timestamps: true

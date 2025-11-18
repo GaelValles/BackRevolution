@@ -3,8 +3,7 @@ import Citas from "../models/citas.model.js";
 import Carros from "../models/carros.model.js";
 import Admin from "../models/admin.model.js";
 
-// Crear cita: valida entrada, parsea fecha de forma segura (acepta timestamp ms o string),
-// comprueba conflicto SOLO para el mismo carro en ventana ±15min y excluye estados terminales.
+// Reemplaza la función crearCita existente por esta (añade verificación de penalidad)
 export const crearCita = async (req, res) => {
   try {
     const {
@@ -25,7 +24,7 @@ export const crearCita = async (req, res) => {
       return res.status(400).json({ message: "ID de carro inválido" });
     }
 
-    // Parse seguro de fecha (acepta timestamp ms o string ISO)
+    // Parse seguro de fecha (acepta timestamp numérico en ms o string ISO / "YYYY-MM-DDTHH:MM")
     let fechaObj;
     if (typeof fechaInicio === 'number' || /^\d+$/.test(String(fechaInicio))) {
       fechaObj = new Date(Number(fechaInicio));
@@ -39,6 +38,21 @@ export const crearCita = async (req, res) => {
     // Owner id desde token (middleware debe setear req.admin)
     const ownerId = req.admin?.id || req.admin?._id;
     if (!ownerId) return res.status(401).json({ message: "No autorizado" });
+
+    // Verificar penalidad activa
+    const usuario = await Admin.findById(ownerId).select('penaltyUntil').lean();
+    if (usuario?.penaltyUntil) {
+      const now = new Date();
+      const penaltyDate = new Date(usuario.penaltyUntil);
+      if (penaltyDate > now) {
+        return res.status(403).json({
+          ok: false,
+          code: "PENALTY_ACTIVE",
+          message: `No puedes agendar citas hasta ${penaltyDate.toISOString()}`,
+          penaltyUntil: penaltyDate.toISOString()
+        });
+      }
+    }
 
     // Verificar que el carro existe y pertenece al usuario
     const carroExiste = await Carros.findOne({ _id: carro, propietario: ownerId });
@@ -85,10 +99,48 @@ export const crearCita = async (req, res) => {
       .populate('carro', 'marca modelo año color placas tipo')
       .populate('cliente', 'nombre correo telefono');
 
-    return res.json(citaCompleta);
+    return res.status(201).json(citaCompleta);
   } catch (error) {
     console.error('Error en crearCita:', error);
     return res.status(500).json({ message: "Error al crear la cita", error: error.message });
+  }
+};
+
+// Nueva ruta/controlador: cancelar cita y aplicar penalidad de 24 horas al usuario
+export const cancelarCita = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "ID de cita inválido" });
+    }
+
+    const cita = await Citas.findById(id);
+    if (!cita) return res.status(404).json({ message: "Cita no encontrada" });
+
+    const userId = req.admin?.id || req.admin?._id;
+    if (!userId) return res.status(401).json({ message: "No autorizado" });
+
+    // Verificar que el usuario es dueño de la cita (o admin)
+    if (cita.cliente.toString() !== userId && !req.admin?.rol) {
+      return res.status(403).json({ message: "No autorizado" });
+    }
+
+    // Calcular penalidad: ahora + 24h
+    const penaltyUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    // Actualizar cita y usuario (sin transacción, sobrescribe penaltyUntil)
+    await Citas.findByIdAndUpdate(id, { estado: 'cancelada' }, { new: true });
+
+    await Admin.findByIdAndUpdate(userId, { $set: { penaltyUntil } });
+
+    return res.status(200).json({
+      ok: true,
+      citaId: id,
+      penaltyUntil: penaltyUntil.toISOString()
+    });
+  } catch (error) {
+    console.error('Error en cancelarCita:', error);
+    return res.status(500).json({ message: "Error al cancelar la cita", error: error.message });
   }
 };
 

@@ -141,7 +141,8 @@ export const verifyToken = async (req, res) => {
             telefono: adminFound.telefono,
             rol: adminFound.rol,
             carros: adminFound.carros,
-            citas: adminFound.citas
+            citas: adminFound.citas,
+            penaltyUntil: adminFound.penaltyUntil || null
         });
     });
 }
